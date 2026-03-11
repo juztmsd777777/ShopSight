@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>ShopSight — AI Price Hunter</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #07070f;
+  --surface: #0d0d1a;
+  --card: #111120;
+  --border: #1c1c30;
+  --accent: #3d7fff;
+  --green: #00e096;
+  --text: #e2e2f0;
+  --muted: #555570;
+  --font: 'Syne', sans-serif;
+  --mono: 'JetBrains Mono', monospace;
+}
+
+* { margin:0; padding:0; box-sizing:border-box; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+body::before {
+  content:'';
+  position:fixed;
+  inset:0;
+  background-image:
+    linear-gradient(rgba(61,127,255,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(61,127,255,0.03) 1px, transparent 1px);
+  background-size: 40px 40px;
+  pointer-events:none;
+}
+
+/* STATUS BAR */
+#status-bar {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 100;
+  height: 52px;
+  background: rgba(7,7,15,0.96);
+  backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  transform: translateY(-100%);
+  transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+#status-bar.visible { transform: translateY(0); }
+
+.s-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text);
+}
+
+.s-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: blink 1s infinite;
+}
+
+@keyframes blink {
+  0%,100% { opacity:1; }
+  50% { opacity:0.3; }
+}
+
+.pills { display: flex; gap: 6px; }
+
+.pill {
+  font-family: var(--mono);
+  font-size: 10px;
+  padding: 4px 12px;
+  border-radius: 100px;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  transition: all 0.2s;
+}
+
+.pill.active { border-color: var(--accent); color: var(--accent); background: rgba(61,127,255,0.1); }
+.pill.done { border-color: var(--green); color: var(--green); background: rgba(0,224,150,0.08); }
+
+/* MAIN */
+main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 24px 60px;
+  position: relative;
+  z-index: 1;
+}
+
+.hero { text-align: center; margin-bottom: 44px; }
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--accent);
+  background: rgba(61,127,255,0.08);
+  border: 1px solid rgba(61,127,255,0.2);
+  border-radius: 100px;
+  padding: 5px 16px;
+  margin-bottom: 22px;
+  letter-spacing: 0.08em;
+}
+
+.badge-dot {
+  width: 6px; height: 6px;
+  background: var(--accent);
+  border-radius: 50%;
+  animation: blink 2s infinite;
+}
+
+h1 {
+  font-size: clamp(42px, 7vw, 80px);
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 1;
+  margin-bottom: 14px;
+}
+
+.grad {
+  background: linear-gradient(135deg, var(--accent), var(--green));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.sub {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+  letter-spacing: 0.05em;
+}
+
+/* SEARCH */
+.search-wrap { width: 100%; max-width: 640px; }
+
+.search-box {
+  display: flex;
+  background: var(--card);
+  border: 1.5px solid var(--border);
+  border-radius: 16px;
+  overflow: hidden;
+  margin-bottom: 14px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.search-box:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(61,127,255,0.1);
+}
+
+.search-box input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 16px;
+  font-weight: 500;
+  padding: 17px 22px;
+}
+
+.search-box input::placeholder { color: var(--muted); font-weight: 400; }
+
+.search-box button {
+  background: linear-gradient(135deg, var(--accent), #1a50cc);
+  border: none;
+  color: #fff;
+  font-family: var(--font);
+  font-size: 14px;
+  font-weight: 700;
+  padding: 17px 30px;
+  cursor: pointer;
+  letter-spacing: 0.05em;
+  transition: opacity 0.15s;
+}
+
+.search-box button:hover { opacity: 0.88; }
+.search-box button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.tags {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.tag {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 100px;
+  padding: 5px 14px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.tag:hover { color: var(--accent); border-color: var(--accent); }
+
+/* STEPS */
+.steps {
+  display: flex;
+  gap: 16px;
+  margin-top: 56px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.step {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 18px 20px;
+  width: 160px;
+  text-align: center;
+}
+
+.step-icon { font-size: 26px; margin-bottom: 8px; }
+.step-title { font-size: 13px; font-weight: 600; margin-bottom: 5px; }
+.step-desc { font-family: var(--mono); font-size: 10px; color: var(--muted); line-height: 1.5; }
+
+/* RESULTS */
+#results {
+  display: none;
+  width: 100%;
+  max-width: 860px;
+  margin-top: 40px;
+}
+
+/* Best deal */
+#best {
+  display: none;
+  background: linear-gradient(135deg, rgba(0,224,150,0.07), rgba(61,127,255,0.04));
+  border: 1px solid rgba(0,224,150,0.25);
+  border-radius: 20px;
+  padding: 24px 28px;
+  margin-bottom: 28px;
+  position: relative;
+  overflow: hidden;
+  animation: up 0.4s ease;
+}
+
+#best::before {
+  content:'';
+  position: absolute;
+  top:0; left:0; right:0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--green), var(--accent));
+}
+
+.best-lbl {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--green);
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.best-name {
+  font-size: 20px;
+  font-weight: 700;
+  margin-bottom: 16px;
+  line-height: 1.3;
+}
+
+.best-row { display: flex; gap: 24px; flex-wrap: wrap; }
+
+.bstat { display: flex; flex-direction: column; gap: 3px; }
+
+.bstat-lbl {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.bstat-val { font-size: 14px; font-weight: 600; }
+.bstat-val.price { font-family: var(--mono); font-size: 28px; color: var(--green); }
+
+/* Shop blocks */
+.sblock { margin-bottom: 20px; animation: up 0.3s ease; }
+
+.sblock-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.sblock-name { font-size: 16px; font-weight: 700; }
+
+.sbadge {
+  font-family: var(--mono);
+  font-size: 10px;
+  padding: 2px 10px;
+  border-radius: 100px;
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+
+.sbadge.scanning { border-color: var(--accent); color: var(--accent); }
+.sbadge.ready { border-color: var(--green); color: var(--green); }
+
+.ilist { display: flex; flex-direction: column; gap: 8px; }
+
+.irow {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 13px 16px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  transition: border-color 0.15s, transform 0.15s;
+  animation: up 0.25s ease;
+}
+
+.irow:hover { border-color: #2a2a50; transform: translateX(2px); }
+.irow.top { border-color: rgba(0,224,150,0.3); }
+
+.inum { font-family: var(--mono); font-size: 11px; color: var(--muted); min-width: 16px; }
+
+.iinfo { flex: 1; min-width: 0; }
+
+.ititle {
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 3px;
+}
+
+.imeta { font-family: var(--mono); font-size: 10px; color: var(--muted); }
+
+.iprice { font-family: var(--mono); font-size: 17px; font-weight: 700; color: var(--accent); white-space: nowrap; }
+.irow.top .iprice { color: var(--green); }
+
+/* No results */
+.no-results {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+  padding: 10px 0;
+}
+
+/* Skeleton */
+.skel-row {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 13px 16px;
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.sk {
+  background: linear-gradient(90deg, var(--border) 0%, #252540 50%, var(--border) 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+  border-radius: 4px;
+}
+
+@keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+@keyframes up { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+</style>
+</head>
+<body>
+
+<!-- STATUS BAR -->
+<div id="status-bar">
+  <div class="s-indicator">
+    <div class="s-dot"></div>
+    <span id="s-text">Searching...</span>
+  </div>
+  <div class="pills">
+    <div class="pill" id="pill-Amazon">Amazon.in</div>
+    <div class="pill" id="pill-Flipkart">Flipkart</div>
+    <div class="pill" id="pill-Croma">Croma</div>
+  </div>
+</div>
+
+<main>
+  <div class="hero">
+    <div class="badge"><div class="badge-dot"></div>Live Browser Agent · India</div>
+    <h1>Watch AI find<br><span class="grad">the best price</span></h1>
+    <p class="sub">// opens real websites · reads prices · no API keys · just scraping</p>
+  </div>
+
+  <div class="search-wrap">
+    <div class="search-box">
+      <input type="text" id="inp" placeholder='Try "iPhone 15" or "Samsung Galaxy S24"'/>
+      <button id="btn" onclick="go()">HUNT →</button>
+    </div>
+    <div class="tags">
+      <span class="tag" onclick="q('iPhone 15 128GB')">iPhone 15</span>
+      <span class="tag" onclick="q('Samsung Galaxy S24')">Galaxy S24</span>
+      <span class="tag" onclick="q('Sony WH-1000XM5')">Sony Headphones</span>
+      <span class="tag" onclick="q('MacBook Air M2')">MacBook Air M2</span>
+      <span class="tag" onclick="q('OnePlus 12')">OnePlus 12</span>
+      <span class="tag" onclick="q('iPad Air')">iPad Air</span>
+    </div>
+  </div>
+
+  <div class="steps" id="steps">
+    <div class="step"><div class="step-icon">🔍</div><div class="step-title">You Search</div><div class="step-desc">Type any product and hit Hunt</div></div>
+    <div class="step"><div class="step-icon">🌐</div><div class="step-title">Browser Opens</div><div class="step-desc">Watch AI navigate sites live</div></div>
+    <div class="step"><div class="step-icon">📊</div><div class="step-title">Prices Read</div><div class="step-desc">Scraped directly from each page</div></div>
+    <div class="step"><div class="step-icon">🏆</div><div class="step-title">Best Deal</div><div class="step-desc">Cheapest option highlighted</div></div>
+  </div>
+
+  <div id="results">
+    <div id="best">
+      <div class="best-lbl">★ Best Deal Found</div>
+      <div class="best-name" id="b-title"></div>
+      <div class="best-row">
+        <div class="bstat"><span class="bstat-lbl">Price</span><span class="bstat-val price" id="b-price"></span></div>
+        <div class="bstat"><span class="bstat-lbl">Store</span><span class="bstat-val" id="b-shop"></span></div>
+        <div class="bstat"><span class="bstat-lbl">Rating</span><span class="bstat-val" id="b-rating"></span></div>
+        <div class="bstat"><span class="bstat-lbl">Delivery</span><span class="bstat-val" id="b-delivery"></span></div>
+      </div>
+    </div>
+    <div id="blocks"></div>
+  </div>
+</main>
+
+<script>
+const WS = "ws://localhost:8000/ws/search";
+let ws = null;
+let bestItem = null;
+
+function q(t) { document.getElementById('inp').value = t; document.getElementById('inp').focus(); }
+
+function bar(show) { document.getElementById('status-bar').classList.toggle('visible', show); }
+function st(msg) { document.getElementById('s-text').textContent = msg; }
+
+function pill(shop, state) {
+  const p = document.getElementById('pill-' + shop);
+  if (p) p.className = 'pill ' + state;
+}
+
+function block(shop) {
+  let b = document.getElementById('blk-' + shop);
+  if (!b) {
+    b = document.createElement('div');
+    b.className = 'sblock';
+    b.id = 'blk-' + shop;
+    b.innerHTML = `
+      <div class="sblock-head">
+        <span class="sblock-name">${shop}</span>
+        <span class="sbadge scanning" id="bdg-${shop}">scanning...</span>
+      </div>
+      <div class="ilist" id="lst-${shop}">
+        ${[1,2,3].map(()=>`<div class="skel-row"><div class="sk" style="width:16px;height:16px;border-radius:50%"></div><div style="flex:1"><div class="sk" style="width:70%;height:11px;margin-bottom:5px"></div><div class="sk" style="width:40%;height:9px"></div></div><div class="sk" style="width:60px;height:15px"></div></div>`).join('')}
+      </div>`;
+    document.getElementById('blocks').appendChild(b);
+  }
+}
+
+function renderItems(shop, items) {
+  const lst = document.getElementById('lst-' + shop);
+  const bdg = document.getElementById('bdg-' + shop);
+  if (!lst) return;
+
+  bdg.textContent = items.length + ' found';
+  bdg.className = 'sbadge ready';
+
+  if (!items.length) {
+    lst.innerHTML = `<div class="no-results">Could not extract prices from ${shop}</div>`;
+    return;
+  }
+
+  lst.innerHTML = items.map((item, i) => {
+    const top = bestItem && item.price === bestItem.price && shop === bestItem.shop;
+    return `<div class="irow ${top?'top':''}">
+      <span class="inum">${i+1}</span>
+      <div class="iinfo">
+        <div class="ititle">${item.title}</div>
+        <div class="imeta">★ ${item.rating||'N/A'} · ${item.delivery||'N/A'}</div>
+      </div>
+      <div class="iprice">${item.price}</div>
+    </div>`;
+  }).join('');
+}
+
+function go() {
+  const q = document.getElementById('inp').value.trim();
+  if (!q) return;
+
+  bestItem = null;
+  document.getElementById('blocks').innerHTML = '';
+  document.getElementById('best').style.display = 'none';
+  document.getElementById('results').style.display = 'none';
+  document.getElementById('steps').style.display = 'none';
+  document.querySelectorAll('.pill').forEach(p => p.className = 'pill');
+  document.getElementById('btn').disabled = true;
+
+  bar(true);
+  st('Connecting...');
+
+  if (ws) { try { ws.close(); } catch(e){} }
+  ws = new WebSocket(WS);
+
+  ws.onopen = () => ws.send(JSON.stringify({ product: q }));
+
+  ws.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+
+    if (msg.type === 'status') {
+      st(msg.message);
+      if (msg.shop) {
+        pill(msg.shop, 'active');
+        document.getElementById('results').style.display = 'block';
+        block(msg.shop);
+      }
+    }
+
+    else if (msg.type === 'shop_done') {
+      pill(msg.shop, 'done');
+      block(msg.shop);
+      renderItems(msg.shop, msg.items || []);
+    }
+
+    else if (msg.type === 'best') {
+      if (msg.item) {
+        bestItem = msg.item;
+        document.getElementById('b-title').textContent = bestItem.title;
+        document.getElementById('b-price').textContent = bestItem.price;
+        document.getElementById('b-shop').textContent = bestItem.shop;
+        document.getElementById('b-rating').textContent = bestItem.rating || 'N/A';
+        document.getElementById('b-delivery').textContent = bestItem.delivery || 'N/A';
+        document.getElementById('best').style.display = 'block';
+      }
+    }
+
+    else if (msg.type === 'done') {
+      st('✅ Done!');
+      document.getElementById('btn').disabled = false;
+      setTimeout(() => bar(false), 3000);
+    }
+
+    else if (msg.type === 'error') {
+      st('⚠ ' + msg.message);
+      document.getElementById('btn').disabled = false;
+    }
+  };
+
+  ws.onerror = () => {
+    st('⚠ Cannot connect. Is server running?');
+    document.getElementById('btn').disabled = false;
+  };
+
+  ws.onclose = () => { document.getElementById('btn').disabled = false; };
+}
+
+document.getElementById('inp').addEventListener('keydown', e => { if(e.key==='Enter') go(); });
+</script>
+</body>
+</html>
