@@ -366,6 +366,43 @@ h1 {
 .iprice { font-family: var(--mono); font-size: 17px; font-weight: 700; color: var(--accent); white-space: nowrap; }
 .irow.top .iprice { color: var(--green); }
 
+.best-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: linear-gradient(135deg, var(--green), #00b377);
+  color: #07070f;
+  font-family: var(--font);
+  font-size: 13px;
+  font-weight: 700;
+  padding: 10px 22px;
+  border-radius: 12px;
+  text-decoration: none;
+  margin-top: 18px;
+  transition: transform 0.15s, opacity 0.15s, box-shadow 0.15s;
+  box-shadow: 0 4px 14px rgba(0,224,150,0.25);
+}
+.best-btn:hover { opacity: 0.92; transform: translateY(-2px); box-shadow: 0 6px 18px rgba(0,224,150,0.35); }
+
+.row-link-btn {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent);
+  background: rgba(61,127,255,0.1);
+  border: 1px solid rgba(61,127,255,0.25);
+  padding: 5px 12px;
+  border-radius: 8px;
+  text-decoration: none;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.row-link-btn:hover {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
 /* No results */
 .no-results {
   font-family: var(--mono);
@@ -408,7 +445,7 @@ h1 {
   <div class="pills">
     <div class="pill" id="pill-Amazon">Amazon.in</div>
     <div class="pill" id="pill-Flipkart">Flipkart</div>
-    <div class="pill" id="pill-Croma">Croma</div>
+    <div class="pill" id="pill-RelianceDigital">Reliance Digital</div>
   </div>
 </div>
 
@@ -451,6 +488,7 @@ h1 {
         <div class="bstat"><span class="bstat-lbl">Rating</span><span class="bstat-val" id="b-rating"></span></div>
         <div class="bstat"><span class="bstat-lbl">Delivery</span><span class="bstat-val" id="b-delivery"></span></div>
       </div>
+      <a id="b-link" href="#" target="_blank" class="best-btn" style="display:none">VIEW DEAL ↗</a>
     </div>
     <div id="blocks"></div>
   </div>
@@ -467,22 +505,24 @@ function bar(show) { document.getElementById('status-bar').classList.toggle('vis
 function st(msg) { document.getElementById('s-text').textContent = msg; }
 
 function pill(shop, state) {
-  const p = document.getElementById('pill-' + shop);
+  const shopId = shop.replace(/\s+/g, '');
+  const p = document.getElementById('pill-' + shopId);
   if (p) p.className = 'pill ' + state;
 }
 
 function block(shop) {
-  let b = document.getElementById('blk-' + shop);
+  const shopId = shop.replace(/\s+/g, '');
+  let b = document.getElementById('blk-' + shopId);
   if (!b) {
     b = document.createElement('div');
     b.className = 'sblock';
-    b.id = 'blk-' + shop;
+    b.id = 'blk-' + shopId;
     b.innerHTML = `
       <div class="sblock-head">
         <span class="sblock-name">${shop}</span>
-        <span class="sbadge scanning" id="bdg-${shop}">scanning...</span>
+        <span class="sbadge scanning" id="bdg-${shopId}">scanning...</span>
       </div>
-      <div class="ilist" id="lst-${shop}">
+      <div class="ilist" id="lst-${shopId}">
         ${[1,2,3].map(()=>`<div class="skel-row"><div class="sk" style="width:16px;height:16px;border-radius:50%"></div><div style="flex:1"><div class="sk" style="width:70%;height:11px;margin-bottom:5px"></div><div class="sk" style="width:40%;height:9px"></div></div><div class="sk" style="width:60px;height:15px"></div></div>`).join('')}
       </div>`;
     document.getElementById('blocks').appendChild(b);
@@ -490,8 +530,9 @@ function block(shop) {
 }
 
 function renderItems(shop, items) {
-  const lst = document.getElementById('lst-' + shop);
-  const bdg = document.getElementById('bdg-' + shop);
+  const shopId = shop.replace(/\s+/g, '');
+  const lst = document.getElementById('lst-' + shopId);
+  const bdg = document.getElementById('bdg-' + shopId);
   if (!lst) return;
 
   bdg.textContent = items.length + ' found';
@@ -511,6 +552,7 @@ function renderItems(shop, items) {
         <div class="imeta">★ ${item.rating||'N/A'} · ${item.delivery||'N/A'}</div>
       </div>
       <div class="iprice">${item.price}</div>
+      ${item.url ? `<a href="${item.url}" target="_blank" class="row-link-btn">VIEW ↗</a>` : ''}
     </div>`;
   }).join('');
 }
@@ -561,6 +603,15 @@ function go() {
         document.getElementById('b-shop').textContent = bestItem.shop;
         document.getElementById('b-rating').textContent = bestItem.rating || 'N/A';
         document.getElementById('b-delivery').textContent = bestItem.delivery || 'N/A';
+        
+        const bLink = document.getElementById('b-link');
+        if (bestItem.url) {
+          bLink.href = bestItem.url;
+          bLink.style.display = 'inline-flex';
+        } else {
+          bLink.style.display = 'none';
+        }
+
         document.getElementById('best').style.display = 'block';
       }
     }

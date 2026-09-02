@@ -11,25 +11,86 @@ SHOPS = [
         "url": "https://www.flipkart.com/search?q={query}",
     },
     {
-        "name": "Croma",
-        "url": "https://www.croma.com/searchB?q={query}",
+        "name": "Reliance Digital",
+        "url": "https://www.reliancedigital.in/products?q={query}",
     },
 ]
+
+ACCESSORY_WORDS = {
+    "case", "cover", "adapter", "charger", "cable", "tempered glass", "screen protector",
+    "protector", "skin", "pouch", "sleeve", "stand", "mount", "strap", "band", "eartips",
+    "ear tips", "lens", "guard", "back cover", "silicone case", "magsafe"
+}
+
+def is_valid_product(title: str, query: str) -> bool:
+    if not title or len(title) < 5:
+        return False
+
+    title_lower = title.lower()
+    query_lower = query.lower()
+
+    # 1. Filter out accessories if query is not asking for one
+    query_has_accessory = any(acc in query_lower for acc in ACCESSORY_WORDS)
+    if not query_has_accessory:
+        if any(re.search(r'\b' + re.escape(acc) + r'\b', title_lower) for acc in ACCESSORY_WORDS):
+            return False
+
+    # 2. Extract model identifier tokens (e.g. "15", "s24", "m2", "12", "xm5")
+    query_numbers = set(re.findall(r'\b\d+[a-zA-Z]*\b|\b[a-zA-Z]+\d+\b', query_lower))
+    model_numbers = {
+        num for num in query_numbers
+        if not any(unit in num for unit in ["gb", "tb", "ram", "rom", "cm", "inch", "mah", "mp"])
+    }
+
+    for num in model_numbers:
+        if not re.search(r'\b' + re.escape(num) + r'\b', title_lower):
+            return False
+
+    # 3. Check for conflicting model versions (e.g. query "iphone 15" vs title "iphone 16" or "iphone 14")
+    for brand in ["iphone", "galaxy s", "macbook", "oneplus"]:
+        if brand in query_lower:
+            q_match = re.search(brand + r'\s*([a-zA-Z0-9]+)', query_lower)
+            t_match = re.search(brand + r'\s*([a-zA-Z0-9]+)', title_lower)
+            if q_match and t_match:
+                if q_match.group(1) != t_match.group(1):
+                    return False
+
+    # 4. Check key brand / product terms match
+    query_words = [
+        w for w in re.findall(r'\w+', query_lower)
+        if len(w) > 2 and w not in ["gb", "tb", "ram", "rom", "inch", "phone", "mobile", "laptop"]
+    ]
+    matched_words = [w for w in query_words if w in title_lower]
+    if query_words and len(matched_words) < max(1, len(query_words) // 2):
+        return False
+
+    return True
 
 async def scrape_amazon(page, product: str) -> list:
     items = []
     try:
         results = await page.query_selector_all("div[data-component-type='s-search-result']")
-        for r in results[:5]:
+        for r in results:
+            if len(items) >= 3:
+                break
             try:
+                # Skip sponsored / ad results
+                sponsored = await r.query_selector(".s-sponsored-label-info-icon, .s-sponsored-label-text")
+                if sponsored:
+                    continue
+
                 # Title - try multiple selectors
                 title = None
-                for sel in ["h2 span", "h2 a span", ".a-text-normal"]:
+                for sel in ["h2 a span", "h2 .a-text-normal", "h2 span.a-text-normal", ".a-size-medium.a-text-normal", "h2 a"]:
                     el = await r.query_selector(sel)
                     if el:
-                        title = (await el.inner_text()).strip()
-                        if title:
+                        t = (await el.inner_text()).strip()
+                        if len(t) > 5 and t.lower() not in ["apple", "samsung", "oneplus", "iqoo", "oppo", "vivo", "realme", "xiaomi"]:
+                            title = t
                             break
+
+                if not title or not is_valid_product(title, product):
+                    continue
 
                 # Price
                 price = None
@@ -46,10 +107,16 @@ async def scrape_amazon(page, product: str) -> list:
                 if el:
                     rating = (await el.inner_text()).strip()[:15]
 
+                # URL extraction
+                url_el = await r.query_selector("h2 a[href], a.a-link-normal[href]")
+                link = await url_el.get_attribute("href") if url_el else None
+                if link and not link.startswith("http"):
+                    link = "https://www.amazon.in" + link
+
                 if title and price:
                     price = price.replace("\n", "").split("₹")[-1]
                     price = "₹" + price.strip().split("\n")[0]
-                    items.append({"title": title[:80], "price": price, "rating": rating, "delivery": "N/A"})
+                    items.append({"title": title[:80], "price": price, "rating": rating, "delivery": "N/A", "url": link})
             except Exception:
                 continue
     except Exception as e:
@@ -59,83 +126,143 @@ async def scrape_amazon(page, product: str) -> list:
 async def scrape_flipkart(page, product: str) -> list:
     items = []
     try:
-        # Try multiple container selectors
         containers = []
-        for sel in ["div._1AtVbE", "div._13oc-S", "div.cPHDOP", "div[data-id]"]:
+        for sel in ["div[data-id]", "div._1AtVbE", "div._13oc-S", "div.cPHDOP", "div.t56Fp5"]:
             containers = await page.query_selector_all(sel)
             if len(containers) > 2:
                 break
 
-        for r in containers[:8]:
+        for r in containers:
+            if len(items) >= 3:
+                break
             try:
+                txt = await r.inner_text()
+                lines = [l.strip() for l in txt.split("\n") if l.strip()]
+                if any(l.lower() == "sponsored" for l in lines[:3]):
+                    continue
+
                 title = None
-                for sel in ["._4rR01T", ".s1Q9rs", ".IRpwTa", "a[title]", "div.col-7-12 a"]:
+                for sel in [".KzDlHZ", ".w752f", "._4rR01T", ".s1Q9rs", ".IRpwTa", "a[title]", "div.col-7-12 a", ".W22pG4"]:
                     el = await r.query_selector(sel)
                     if el:
-                        title = (await el.inner_text()).strip()
-                        if len(title) > 5:
+                        t = (await el.inner_text()).strip()
+                        if len(t) > 5:
+                            title = t
                             break
+                if not title:
+                    for line in lines:
+                        if not any(k in line.lower() for k in ["bestseller", "add to compare", "ratings", "reviews", "bank offer", "off", "sponsored"]):
+                            title = line
+                            break
+
+                if not title or not is_valid_product(title, product):
+                    continue
 
                 price = None
-                for sel in ["._30jeq3", "._1_WHN1", "div._25b18c ._30jeq3", "._3tbVC0"]:
+                for sel in [".Nx9qKw", "._30jeq3", "._1_WHN1", "div._25b18c", "div.Nx9qKw", "._3tbVC0"]:
                     el = await r.query_selector(sel)
                     if el:
-                        price = (await el.inner_text()).strip()
-                        if price:
+                        p_txt = (await el.inner_text()).strip()
+                        if p_txt and ("₹" in p_txt or any(c.isdigit() for c in p_txt)):
+                            price = p_txt
                             break
+                if not price:
+                    m = re.search(r"₹\s*[\d,]+", txt)
+                    if m:
+                        price = m.group(0)
 
                 rating = "N/A"
-                for sel in ["._3LWZlK", "._1lRcqv span"]:
+                for sel in [".Xg-52r", "._3LWZlK", "._1lRcqv span"]:
                     el = await r.query_selector(sel)
                     if el:
-                        rating = (await el.inner_text()).strip()[:10]
-                        if rating:
+                        r_txt = (await el.inner_text()).strip()[:10]
+                        if r_txt:
+                            rating = r_txt
                             break
+                if rating == "N/A":
+                    m = re.search(r"(\d\.\d)\s*[\d,]*\s*Ratings", txt)
+                    if m:
+                        rating = m.group(1)
+
+                url_el = await r.query_selector("a[href]")
+                link = await url_el.get_attribute("href") if url_el else None
+                if link and not link.startswith("http"):
+                    link = "https://www.flipkart.com" + link
 
                 if title and price and len(title) > 5:
                     if not price.startswith("₹"):
-                        price = "₹" + price.replace("₹","").strip()
-                    items.append({"title": title[:80], "price": price, "rating": rating, "delivery": "N/A"})
+                        price = "₹" + price.replace("₹", "").strip()
+                    items.append({"title": title[:80], "price": price, "rating": rating, "delivery": "N/A", "url": link})
             except Exception:
                 continue
     except Exception as e:
         print(f"Flipkart scrape error: {e}")
     return items[:3]
 
-async def scrape_croma(page, product: str) -> list:
+async def scrape_reliance_digital(page, product: str) -> list:
     items = []
     try:
-        for sel in [".cp-product", "li.product", ".product-item", "article"]:
+        containers = []
+        for sel in ["div.product-card-details", "div[class*='product-card']", "div.card-info-container", "div[class*='sp__product']"]:
             containers = await page.query_selector_all(sel)
-            if len(containers) > 1:
-                for r in containers[:5]:
-                    try:
-                        title = None
-                        for ts in ["h3", ".product-title", "a.product-title", "h4"]:
-                            el = await r.query_selector(ts)
-                            if el:
-                                title = (await el.inner_text()).strip()
-                                if len(title) > 5:
-                                    break
+            if len(containers) >= 2:
+                break
 
-                        price = None
-                        for ps in [".amount", ".new-price", "span.amount", "[class*='price']"]:
-                            el = await r.query_selector(ps)
-                            if el:
-                                price = (await el.inner_text()).strip()
-                                if price and any(c.isdigit() for c in price):
-                                    break
+        for r in containers:
+            if len(items) >= 3:
+                break
+            try:
+                title = None
+                for sel in [".product-card-title", "p[class*='title']", "div[class*='title']", "a[title]", "p.sp__name"]:
+                    el = await r.query_selector(sel)
+                    if el:
+                        t = (await el.inner_text()).strip()
+                        if len(t) > 5:
+                            title = t
+                            break
 
-                        if title and price:
-                            if not price.startswith("₹"):
-                                price = "₹" + price.replace("₹","").strip()
-                            items.append({"title": title[:80], "price": price, "rating": "N/A", "delivery": "N/A"})
-                    except Exception:
-                        continue
-                if items:
-                    break
+                price = None
+                for sel in ["span[class*='price']", "div[class*='price']", "span.sp__price"]:
+                    el = await r.query_selector(sel)
+                    if el:
+                        p_txt = (await el.inner_text()).strip()
+                        if p_txt and ("₹" in p_txt or any(c.isdigit() for c in p_txt)):
+                            price = p_txt
+                            break
+
+                if not title or not price:
+                    txt = await r.inner_text()
+                    lines = [l.strip() for l in txt.split("\n") if l.strip()]
+                    if not title and lines:
+                        for l in lines:
+                            if len(l) > 8 and not any(k in l.lower() for k in ["off", "mrp", "save", "unavailable", "₹", "sponsored"]):
+                                title = l
+                                break
+                    if not price:
+                        m = re.search(r"₹\s*[\d,]+(?:\.\d+)?", txt)
+                        if m:
+                            price = m.group(0)
+
+                if not title or not is_valid_product(title, product):
+                    continue
+
+                url_el = await r.query_selector("a[href]")
+                if not url_el:
+                    parent = await r.query_selector("xpath=..")
+                    url_el = await parent.query_selector("a[href]") if parent else None
+                link = await url_el.get_attribute("href") if url_el else None
+                if link and not link.startswith("http"):
+                    link = "https://www.reliancedigital.in" + link
+
+                if title and price and len(title) > 5:
+                    if not price.startswith("₹"):
+                        price = "₹" + price.replace("₹", "").strip()
+                    price = price.split(".")[0]
+                    items.append({"title": title[:80], "price": price, "rating": "N/A", "delivery": "N/A", "url": link})
+            except Exception:
+                continue
     except Exception as e:
-        print(f"Croma scrape error: {e}")
+        print(f"Reliance Digital scrape error: {e}")
     return items[:3]
 
 async def run_agent(product: str, send_event):
@@ -165,7 +292,7 @@ async def run_agent(product: str, send_event):
             scrapers = {
                 "Amazon": scrape_amazon,
                 "Flipkart": scrape_flipkart,
-                "Croma": scrape_croma,
+                "Reliance Digital": scrape_reliance_digital,
             }
 
             for i, shop in enumerate(SHOPS):

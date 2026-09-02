@@ -1,13 +1,13 @@
 # ShopSight 🔍 — Live AI Price Hunter
 
-Watch a real browser navigate Indian shopping sites live on your screen. ShopSight opens Chrome, visits Amazon.in, Flipkart, and Croma one by one, scrapes prices directly from the page, and shows you the best deal — no API keys, no cost, just pure browser automation.
+Watch a real browser navigate Indian shopping sites live on your screen. ShopSight opens Chrome, visits Amazon.in, Flipkart, and Reliance Digital one by one, scrapes prices directly from the page, and shows you the best deal — no API keys, no cost, just pure browser automation.
 
 ---
 
 ## How It Works
 
 1. Type a product name → agent launches a real visible Chrome window
-2. Browser visits Amazon.in, Flipkart, and Croma live on your screen
+2. Browser visits Amazon.in, Flipkart, and Reliance Digital live on your screen
 3. Prices, ratings, and delivery info are scraped directly from the HTML
 4. Best deal is highlighted instantly on the website
 
@@ -90,4 +90,4 @@ shopsight/
 | --------- | ------ |
 | Amazon.in | India  |
 | Flipkart  | India  |
-| Croma     | India  |
+| Reliance Digital | India  |
