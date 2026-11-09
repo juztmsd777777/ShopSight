@@ -24,18 +24,30 @@ Watch a real browser navigate Indian shopping sites live on your screen. ShopSig
 
 ```bash
 # Install dependencies
-pip install -r requirements.txt --timeout 120
+pip install -r backend/requirements.txt --timeout 120
 
 # Install browser
 python -m playwright install chromium
 
-# Run the server
-python run.py
+# Run the server from the project root
+python backend/run.py
 ```
 
 ### Open the UI
 
-Open `index.html` in your browser. The site connects to the backend via WebSocket on `localhost:8000`.
+Open `http://127.0.0.1:8000` in your browser. The backend serves the frontend and the WebSocket endpoint.
+
+### Frontend development
+
+The frontend is now a React/Vite application. Run the backend in one terminal, then run the frontend in another:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Open the Vite URL shown in the terminal, usually `http://localhost:5173`.
 
 ---
 
@@ -62,12 +74,17 @@ const WS = "wss://YOUR-CLOUD-RUN-URL/ws/search";
 
 ```
 shopsight/
-├── agent.py          # Browser automation + scraping logic
-├── main.py           # FastAPI + WebSocket server
-├── run.py            # Windows-compatible server launcher
-├── index.html        # Frontend UI
-├── requirements.txt  # Dependencies
-└── .env              # Environment config (no keys needed)
+├── backend/
+│   ├── agent.py          # Browser automation + scraping logic
+│   ├── main.py           # FastAPI + WebSocket server
+│   ├── run.py            # Windows-compatible server launcher
+│   └── requirements.txt  # Python dependencies
+├── frontend/
+│   └── index.html        # Frontend UI
+├── docs/
+│   └── README.md         # Project documentation
+├── presentations/        # Project presentation files
+└── .env                 # Environment config
 ```
 
 ---

@@ -22,12 +22,45 @@ ACCESSORY_WORDS = {
     "ear tips", "lens", "guard", "back cover", "silicone case", "magsafe"
 }
 
+QUERY_STOP_WORDS = {
+    "best", "top", "buy", "find", "show", "me", "please", "under", "below",
+    "less", "than", "with", "good", "great", "for", "the", "a", "an", "and",
+    "or", "in", "on", "available", "price", "prices", "phone", "phones", "mobile",
+    "mobiles", "laptop", "laptops", "computer", "computers", "item", "items",
+}
+
+def extract_budget(query: str):
+    """Return a maximum price from phrases such as 'under 30000' or 'below ₹30,000'."""
+    match = re.search(r"(?:under|below|less\s+than|upto|up\s+to)\s*[₹$]?\s*([\d,]+)", query.lower())
+    if not match:
+        return None
+    return int(match.group(1).replace(",", ""))
+
+def search_query(query: str) -> str:
+    """Strip conversational constraints before sending a query to retailer search pages."""
+    cleaned = re.sub(r"(?:under|below|less\s+than|upto|up\s+to)\s*[₹$]?\s*[\d,]+", "", query, flags=re.I)
+    cleaned = re.sub(r"\b(best|top|find|show|me|please|good|great|available|price|prices)\b", "", cleaned, flags=re.I)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return cleaned or query.strip()
+
+def within_budget(price: str, query: str) -> bool:
+    budget = extract_budget(query)
+    if budget is None:
+        return True
+    numbers = re.findall(r"[\d]+", price.replace(",", ""))
+    return bool(numbers) and int(numbers[0]) <= budget
+
 def is_valid_product(title: str, query: str) -> bool:
     if not title or len(title) < 5:
         return False
 
     title_lower = title.lower()
     query_lower = query.lower()
+    budget = extract_budget(query_lower)
+
+    # Budget constraints are handled separately from product identity.
+    # They must never be interpreted as a model number.
+    identity_query = re.sub(r"(?:under|below|less\s+than|upto|up\s+to)\s*[₹$]?\s*[\d,]+", "", query_lower)
 
     # 1. Filter out accessories if query is not asking for one
     query_has_accessory = any(acc in query_lower for acc in ACCESSORY_WORDS)
@@ -36,7 +69,7 @@ def is_valid_product(title: str, query: str) -> bool:
             return False
 
     # 2. Extract model identifier tokens (e.g. "15", "s24", "m2", "12", "xm5")
-    query_numbers = set(re.findall(r'\b\d+[a-zA-Z]*\b|\b[a-zA-Z]+\d+\b', query_lower))
+    query_numbers = set(re.findall(r'\b\d+[a-zA-Z]*\b|\b[a-zA-Z]+\d+\b', identity_query))
     model_numbers = {
         num for num in query_numbers
         if not any(unit in num for unit in ["gb", "tb", "ram", "rom", "cm", "inch", "mah", "mp"])
@@ -58,7 +91,7 @@ def is_valid_product(title: str, query: str) -> bool:
     # 4. Check key brand / product terms match
     query_words = [
         w for w in re.findall(r'\w+', query_lower)
-        if len(w) > 2 and w not in ["gb", "tb", "ram", "rom", "inch", "phone", "mobile", "laptop"]
+        if len(w) > 2 and w not in QUERY_STOP_WORDS and w not in ["gb", "tb", "ram", "rom", "inch"]
     ]
     matched_words = [w for w in query_words if w in title_lower]
     if query_words and len(matched_words) < max(1, len(query_words) // 2):
@@ -113,7 +146,7 @@ async def scrape_amazon(page, product: str) -> list:
                 if link and not link.startswith("http"):
                     link = "https://www.amazon.in" + link
 
-                if title and price:
+                if title and price and within_budget(price, product):
                     price = price.replace("\n", "").split("₹")[-1]
                     price = "₹" + price.strip().split("\n")[0]
                     items.append({"title": title[:80], "price": price, "rating": rating, "delivery": "N/A", "url": link})
@@ -189,7 +222,7 @@ async def scrape_flipkart(page, product: str) -> list:
                 if link and not link.startswith("http"):
                     link = "https://www.flipkart.com" + link
 
-                if title and price and len(title) > 5:
+                if title and price and len(title) > 5 and within_budget(price, product):
                     if not price.startswith("₹"):
                         price = "₹" + price.replace("₹", "").strip()
                     items.append({"title": title[:80], "price": price, "rating": rating, "delivery": "N/A", "url": link})
@@ -254,7 +287,7 @@ async def scrape_reliance_digital(page, product: str) -> list:
                 if link and not link.startswith("http"):
                     link = "https://www.reliancedigital.in" + link
 
-                if title and price and len(title) > 5:
+                if title and price and len(title) > 5 and within_budget(price, product):
                     if not price.startswith("₹"):
                         price = "₹" + price.replace("₹", "").strip()
                     price = price.split(".")[0]
@@ -297,7 +330,10 @@ async def run_agent(product: str, send_event):
 
             for i, shop in enumerate(SHOPS):
                 shop_name = shop["name"]
-                url = shop["url"].format(query=product.replace(" ", "+"))
+                # Retailer search pages work better with product terms than with
+                # conversational constraints such as "best" or "under ₹30,000".
+                retailer_query = search_query(product)
+                url = shop["url"].format(query=retailer_query.replace(" ", "+"))
 
                 await emit("status", {"message": f"Opening {shop_name}...", "shop": shop_name})
 

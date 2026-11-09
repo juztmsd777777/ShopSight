@@ -7,6 +7,7 @@ if sys.platform == "win32":
 
 import json
 import os
+from pathlib import Path
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
@@ -17,6 +18,9 @@ load_dotenv()
 
 app = FastAPI(title="ShopSight")
 
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+FRONTEND_DIR = PROJECT_ROOT / "frontend"
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -26,8 +30,9 @@ app.add_middleware(
 
 @app.get("/")
 def root():
-    if os.path.exists("index.html"):
-        return FileResponse("index.html")
+    index_file = FRONTEND_DIR / "index.html"
+    if index_file.exists():
+        return FileResponse(index_file)
     return {"status": "ShopSight running"}
 
 @app.get("/health")
